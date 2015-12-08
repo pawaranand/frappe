@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 # Tree (Hierarchical) Nested Set Model (nsm)
@@ -201,7 +201,15 @@ class NestedSet(Document):
 			frappe.throw(_("Cannot delete {0} as it has child nodes").format(self.name), NestedSetChildExistsError)
 
 		self.set(self.nsm_parent_field, "")
-		update_nsm(self)
+
+		try:
+			update_nsm(self)
+		except frappe.DoesNotExistError:
+			if self.flags.on_rollback:
+				pass
+				frappe.message_log.pop()
+			else:
+				raise
 
 	def before_rename(self, olddn, newdn, merge=False, group_fname="is_group"):
 		if merge:
@@ -225,6 +233,9 @@ class NestedSet(Document):
 			if frappe.db.sql("""select name from `tab%s` where %s=%s and docstatus!=2""" %
 				(self.doctype, self.nsm_parent_field, '%s'), (self.name)):
 				frappe.throw(_("{0} {1} cannot be a leaf node as it has children").format(_(self.doctype), self.name))
+
+	def get_ancestors(self):
+		return get_ancestors_of(self.doctype, self.name)
 
 def get_root_of(doctype):
 	"""Get root element of a DocType with a tree structure"""

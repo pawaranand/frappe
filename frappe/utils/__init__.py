@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 # util __init__.py
@@ -7,6 +7,7 @@ from __future__ import unicode_literals
 from werkzeug.test import Client
 import os, sys, re, urllib
 import frappe
+import requests
 
 # utility functions like cint, int, flt, etc.
 from frappe.utils.data import *
@@ -30,8 +31,11 @@ def getCSVelement(v):
 		return '"'+v+'"'
 	else: return v or ''
 
-def get_fullname(user):
+def get_fullname(user=None):
 	"""get the full name (first name + last name) of the user from User"""
+	if not user:
+		user = frappe.session.user
+
 	if not hasattr(frappe.local, "fullnames"):
 		frappe.local.fullnames = {}
 
@@ -61,10 +65,41 @@ def extract_email_id(email):
 		email_id = email_id.decode("utf-8", "ignore")
 	return email_id
 
-def validate_email_add(email_str):
+def validate_email_add(email_str, throw=False):
 	"""Validates the email string"""
+	if email_str and " " in email_str and "<" not in email_str:
+		# example: "test@example.com test2@example.com" will return "test@example.comtest2" after parseaddr!!!
+		return False
+
 	email = extract_email_id(email_str)
-	return re.match("[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", email.lower())
+	match = re.match("[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", email.lower())
+
+	if not match:
+		if throw:
+			frappe.throw(frappe._("{0} is not a valid email id").format(email),
+				frappe.InvalidEmailAddressError)
+		else:
+			return False
+
+	matched = match.group(0)
+
+	if match:
+		match = matched==email.lower()
+
+	if not match and throw:
+		frappe.throw(frappe._("{0} is not a valid email id").format(email),
+			frappe.InvalidEmailAddressError)
+
+	return matched
+
+def split_emails(txt):
+	email_list = []
+	for email in re.split(''',(?=(?:[^"]|"[^"]*")*$)''', cstr(txt)):
+		email = strip(cstr(email))
+		if email:
+			email_list.append(email)
+
+	return email_list
 
 def random_string(length):
 	"""generate a random string"""
@@ -134,6 +169,10 @@ def remove_blanks(d):
 		del d[key]
 
 	return d
+
+def strip_html_tags(text):
+	"""Remove html tags from text"""
+	return re.sub("\<[^>]*\>", "", text)
 
 def pprint_dict(d, level=1, no_blanks=True):
 	"""
@@ -278,6 +317,9 @@ def get_site_path(*path):
 def get_files_path(*path):
 	return get_site_path("public", "files", *path)
 
+def get_bench_path():
+	return os.path.realpath(os.path.join(os.path.dirname(frappe.__file__), '..', '..', '..'))
+
 def get_backups_path():
 	return get_site_path("private", "backups")
 
@@ -326,6 +368,10 @@ def get_hook_method(hook_name, fallback=None):
 	if fallback:
 		return fallback
 
+def call_hook_method(hook, *args, **kwargs):
+	for method_name in frappe.get_hooks(hook):
+		frappe.get_attr(method_name)(*args, **kwargs)
+
 def update_progress_bar(txt, i, l):
 	lt = len(txt)
 	if lt < 36:
@@ -350,3 +396,55 @@ def get_html_format(print_path):
 
 	return html_format
 
+def is_markdown(text):
+	if "<!-- markdown -->" in text:
+		return True
+	elif "<!-- html -->" in text:
+		return False
+	else:
+		return not re.search("<p[\s]*>|<br[\s]*>", text)
+
+def get_sites(sites_path=None):
+	import os
+	if not sites_path:
+		sites_path = '.'
+	return [site for site in os.listdir(sites_path)
+			if os.path.isdir(os.path.join(sites_path, site))
+				and not site in ('assets',)]
+
+
+def get_request_session(max_retries=3):
+	from requests.packages.urllib3.util import Retry
+	session = requests.Session()
+	session.mount("http://", requests.adapters.HTTPAdapter(max_retries=Retry(total=5, status_forcelist=[500])))
+	session.mount("https://", requests.adapters.HTTPAdapter(max_retries=Retry(total=5, status_forcelist=[500])))
+	return session
+
+def watch(path, handler=None, debug=True):
+	import sys
+	import time
+	import logging
+	from watchdog.observers import Observer
+	from watchdog.events import LoggingEventHandler, FileSystemEventHandler
+
+	class Handler(FileSystemEventHandler):
+		def on_any_event(self, event):
+			if debug:
+				print "File {0}: {1}".format(event.event_type, event.src_path)
+
+			if not handler:
+				print "No handler specified"
+				return
+
+			handler(event.src_path, event.event_type)
+
+	event_handler = Handler()
+	observer = Observer()
+	observer.schedule(event_handler, path, recursive=True)
+	observer.start()
+	try:
+		while True:
+			time.sleep(1)
+	except KeyboardInterrupt:
+		observer.stop()
+	observer.join()

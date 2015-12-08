@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 /* Inspired from: http://github.com/mindmup/bootstrap-wysiwyg */
@@ -17,7 +17,7 @@ bsEditor = Class.extend({
 			this.wrapper = $("<div></div>").appendTo(this.options.parent);
 			this.setup_editor($("<div class='frappe-list'></div>").appendTo(this.wrapper));
 			this.setup_inline_toolbar();
-			this.editor.css(this.options.inline_editor_style);
+			this.editor.addClass("text-editor");
 			this.set_editing();
 		}
 	},
@@ -29,10 +29,14 @@ bsEditor = Class.extend({
 				me.set_editing();
 			}
 		}).on("mouseup keyup mouseout", function() {
+			var html = me.clean_html();
 			if(me.editing) {
 				me.toolbar.save_selection();
 				me.toolbar.update();
-				me.options.change && me.options.change(me.clean_html());
+				if(html != me.last_html) {
+					me.options.change && me.options.change(html);
+					me.last_html = html;
+				}
 			}
 		}).data("object", this);
 
@@ -82,22 +86,8 @@ bsEditor = Class.extend({
 			'shift+tab': 'outdent',
 			'tab': 'indent'
 	    },
-		inline_editor_style: {
-			"height": "400px",
-			"background-color": "white",
-			"border-collapse": "separate",
-			"border": "1px solid rgb(204, 204, 204)",
-			"padding": "4px",
-			"box-sizing": "content-box",
-			"-webkit-box-shadow": "rgba(0, 0, 0, 0.0745098) 0px 1px 1px 0px inset",
-			"box-shadow": "rgba(0, 0, 0, 0.0745098) 0px 1px 1px 0px inset",
-			"border-radius": "3px",
-			"overflow": "scroll",
-			"outline": "none"
-		},
 		toolbar_selector: '[data-role=editor-toolbar]',
 		command_role: 'edit',
-		active_toolbar_class: 'btn-info',
 		selection_marker: 'edit-focus-marker',
 		selection_color: 'darkgrey',
 		remove_typography: false,
@@ -112,11 +102,13 @@ bsEditor = Class.extend({
 					e.preventDefault();
 					e.stopPropagation();
 					me.toolbar.execCommand(command);
+					return false;
 				}
 			}).keyup(hotkey, function (e) {
 				if (me.editor.attr('contenteditable') && me.editor.is(':visible')) {
 					e.preventDefault();
 					e.stopPropagation();
+					return false;
 				}
 			});
 		});
@@ -125,6 +117,7 @@ bsEditor = Class.extend({
 	clean_html: function() {
 
 		var html = this.editor.html() || "";
+
 		if(!$.trim(this.editor.text()) && !(this.editor.find("img"))) html = "";
 
 		// remove custom typography (use CSS!)
@@ -159,7 +152,7 @@ bsEditor = Class.extend({
 		$.each(files, function (i, file) {
 			if (/^image\//.test(file.type)) {
 				me.get_image(file, function(image_url) {
-					me.toolbar.execCommand('insertimage', image_url);
+					me.toolbar.execCommand('insertImage', image_url);
 				})
 			}
 		});
@@ -193,7 +186,9 @@ bsEditor = Class.extend({
 	set_input: function(value) {
 		if(this.options.field && this.options.field.inside_change_event)
 			return;
-		this.editor.html(value==null ? "" : value);
+		if(value==null) value = "";
+		this.last_html = value;
+		this.editor.html(value);
 	}
 
 })
@@ -214,67 +209,20 @@ bsEditorToolbar = Class.extend({
 	fixed_style: {
 		position: "fixed",
 		top: "0px",
-		padding: "5px",
+		"padding-top": "5px",
 		width: "100%",
 		height: "45px",
 		"background-color": "black",
 		display: "none"
 	},
 	inline_style: {
-		padding: "5px",
+		"padding-top": "5px",
 	},
 	make: function(parent) {
 		if(!parent)
 			parent = $("body");
 		if(!parent.find(".frappe-list-toolbar").length) {
-			this.toolbar = $('<div class="frappe-list-toolbar frappe-ignore-click">\
-			<div class="btn-toolbar" data-role="editor-toolbar" style="margin-bottom: 7px;">\
-				<div class="btn-group form-group">\
-					<a class="btn btn-default btn-small dropdown-toggle" data-toggle="dropdown" \
-						title="' + __("Font Size") + '"><i class="icon-text-height"></i> <b class="caret"></b></a>\
-					<ul class="dropdown-menu" role="menu">\
-						<li><a href="#" data-edit="formatBlock &lt;p&gt;"><p>' + __("Paragraph") + '</p></a></li>\
-						<li><a href="#" data-edit="formatBlock &lt;h1&gt;"><h1>' + __("Heading") + ' 1</h1></a></li>\
-						<li><a href="#" data-edit="formatBlock &lt;h2&gt;"><h2>' + __("Heading") + ' 2</h2></a></li>\
-						<li><a href="#" data-edit="formatBlock &lt;h3&gt;"><h3>' + __("Heading") + ' 3</h3></a></li>\
-						<li><a href="#" data-edit="formatBlock &lt;h4&gt;"><h4>' + __("Heading") + ' 4</h4></a></li>\
-						<li><a href="#" data-edit="formatBlock &lt;h5&gt;"><h5>' + __("Heading") + ' 5</h5></a></li>\
-					</ul>\
-				</div>\
-				<div class="btn-group form-group">\
-					<a class="btn btn-default btn-small" data-edit="bold" title="' + __("Bold (Ctrl/Cmd+B)") + '">\
-						<i class="icon-bold"></i></a>\
-					<a class="btn btn-default btn-small" data-edit="insertunorderedlist" title="' + __("Bullet list") + '">\
-						<i class="icon-list-ul"></i></a>\
-					<a class="btn btn-default btn-small" data-edit="insertorderedlist" title="' + __("Number list") + '">\
-						<i class="icon-list-ol"></i></a>\
-					<a class="btn btn-default btn-small" data-edit="outdent" title="' + __("Reduce indent (Shift+Tab)") + '">\
-						<i class="icon-indent-left"></i></a>\
-					<a class="btn btn-default btn-small" data-edit="indent" title="' + __("Indent (Tab)") + '">\
-						<i class="icon-indent-right"></i></a>\
-				</div>\
-				<div class="btn-group hidden-xs form-group">\
-					<a class="btn btn-default btn-small" data-edit="justifyleft" title="' + __("Align Left (Ctrl/Cmd+L)") + '">\
-						<i class="icon-align-left"></i></a>\
-					<a class="btn btn-default btn-small" data-edit="justifycenter" title="' + __("Center (Ctrl/Cmd+E)") + '">\
-						<i class="icon-align-center"></i></a>\
-					<a class="btn btn-default btn-small btn-add-link" title="' + __("Insert Link") + '">\
-						<i class="icon-link"></i></a>\
-					<a class="btn btn-default btn-small" title="' + __("Remove Link") +'" data-edit="unlink">\
-						<i class="icon-unlink"></i></a>\
-					<a class="btn btn-default btn-small btn-insert-img" title="' + __("Insert picture (or just drag & drop)") + '">\
-						<i class="icon-picture"></i></a>\
-					<a class="btn btn-default btn-small" data-edit="insertHorizontalRule" \
-						title="' + __("Horizontal Line Break") + '">─</a>\
-				</div>\
-				<div class="btn-group form-group">\
-					<a class="btn btn-default btn-small btn-html" title="' + __("HTML") + '">\
-						<i class="icon-code"></i></a>\
-					<a class="btn btn-default btn-small btn-success" data-action="Save" title="' + __("Save") + '">\
-						<i class="icon-save"></i></a>\
-				</div>\
-				<input type="file" data-edit="insertImage" />\
-			</div>').prependTo(parent);
+			this.toolbar = $(frappe.render_template("editor")).prependTo(parent);
 
 			if(this.inline) {
 				this.toolbar.find("[data-action]").remove();
@@ -329,7 +277,7 @@ bsEditorToolbar = Class.extend({
 		var me = this;
 
 		// standard button events
-		this.toolbar.find('a[data-' + me.options.command_role + ']').click(function () {
+		this.toolbar.find('a[data-' + me.options.command_role + ']').click(function (e) {
 			me.restore_selection();
 			me.editor.focus();
 			me.execCommand($(this).data(me.options.command_role));
@@ -337,6 +285,8 @@ bsEditorToolbar = Class.extend({
 			// close dropdown
 			if(me.toolbar.find("ul.dropdown-menu:visible").length)
 				me.toolbar.find('[data-toggle="dropdown"]').dropdown("toggle");
+			e.stopPropagation();
+			e.preventDefault();
 			return false;
 		});
 		this.toolbar.find('[data-toggle=dropdown]').click(function() { me.restore_selection() });
@@ -364,6 +314,7 @@ bsEditorToolbar = Class.extend({
 			}
 			me.save_selection();
 			this.value = '';
+
 			return false;
 		});
 
@@ -372,11 +323,8 @@ bsEditorToolbar = Class.extend({
 
 		// edit html
 		this.toolbar.find(".btn-html").on("click", function() {
-			if(!window.bs_html_editor)
-				window.bs_html_editor = new bsHTMLEditor();
-
-			window.bs_html_editor.show(me.editor);
-		})
+			new bsHTMLEditor().show(me.editor);
+		});
 	},
 
 	update: function () {
@@ -454,16 +402,17 @@ bsHTMLEditor = Class.extend({
 		var me = this;
 		this.modal = bs_get_modal("<i class='icon-code'></i> Edit HTML", '<textarea class="form-control" \
 			style="height: 400px; width: 100%; font-family: Monaco, \'Courier New\', monospace; font-size: 11px">\
-			</textarea><br>\
-			<button class="btn btn-primary" style="margin-top: 7px;">' + __("Save") + '</button>');
-		this.modal.addClass("frappe-ignore-click");
-		this.modal.find(".btn-primary").on("click", function() {
-			var html = me.modal.find("textarea").val();
+			</textarea>');
+			this.modal.addClass("frappe-ignore-click");
+		this.modal.find(".btn-primary").removeClass("hide").html(__("Update")).on("click", function() {
+			me._html = me.modal.find("textarea").val();
+
 			$.each(me.editor.dataurls, function(key, val) {
-				html = html.replace(key, val);
+				me._html = replace_all(me._html, key, val);
 			});
-			var editor = me.editor.data("object")
-			editor.set_input(html)
+
+			var editor = me.editor.data("object");
+			editor.set_input(me._html);
 			editor.options.change && editor.options.change(editor.clean_html());
 			me.modal.modal("hide");
 		});
@@ -471,14 +420,14 @@ bsHTMLEditor = Class.extend({
 	show: function(editor) {
 		var me = this;
 		this.editor = editor;
-		this.modal.modal("show")
+		this.modal.modal("show");
 		var html = me.editor.html();
 		// pack dataurls so that html display is faster
 		this.editor.dataurls = {}
 		html = html.replace(/<img\s*src=\s*["\'](data:[^,]*),([^"\']*)["\']/g, function(full, g1, g2) {
 			var key = g2.slice(0,5) + "..." + g2.slice(-5);
 			me.editor.dataurls[key] = g1 + "," + g2;
-			return '<img src="'+g1 + "," + key+'"';
+			return '<img src="'+ key+'"';
 		});
 		this.modal.find("textarea").val(html_beautify(html));
 	}

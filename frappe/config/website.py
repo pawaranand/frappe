@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 from frappe import _
 
 def get_data():
@@ -25,16 +26,6 @@ def get_data():
 					"type": "doctype",
 					"name": "Blogger",
 					"description": _("User ID of a blog writer."),
-				},
-				{
-					"type": "doctype",
-					"name": "Website Group",
-					"description": _("Web Site Forum Page."),
-				},
-				{
-					"type": "doctype",
-					"name": "Post",
-					"description": _("List of Web Site Forum's Posts."),
 				},
 				{
 					"type": "doctype",
@@ -84,13 +75,8 @@ def get_data():
 				},
 				{
 					"type": "doctype",
-					"name": "Website Page Permission",
-					"description": _("Define read, write, admin permissions for a Website Page."),
-				},
-				{
-					"type": "doctype",
-					"name": "Social Login Keys",
-					"description": _("Enter keys to enable login via Facebook, Google, GitHub."),
+					"name": "Website Theme",
+					"description": _("List of themes for Website."),
 				}
 			]
 		},

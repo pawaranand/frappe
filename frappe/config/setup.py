@@ -1,10 +1,11 @@
+from __future__ import unicode_literals
 from frappe import _
-from frappe.widgets.moduleview import add_setup_section
+from frappe.desk.moduleview import add_setup_section
 
 def get_data():
 	data = [
 		{
-			"label": _("Users and Permissions"),
+			"label": _("Users"),
 			"icon": "icon-group",
 			"items": [
 				{
@@ -16,7 +17,13 @@ def get_data():
 					"type": "doctype",
 					"name": "Role",
 					"description": _("User Roles")
-				},
+				}
+			]
+		},
+		{
+			"label": _("Permissions"),
+			"icon": "icon-lock",
+			"items": [
 				{
 					"type": "page",
 					"name": "permission-manager",
@@ -32,12 +39,26 @@ def get_data():
 					"description": _("Set Permissions per User")
 				},
 				{
+					"type": "page",
+					"name": "modules_setup",
+					"label": _("Show / Hide Modules"),
+					"icon": "icon-upload",
+					"description": _("Show or hide modules globally.")
+				},
+				{
 					"type": "report",
 					"is_query_report": True,
 					"doctype": "User",
 					"icon": "icon-eye-open",
 					"name": "Permitted Documents For User",
 					"description": _("Check which Documents are readable by a User")
+				},
+				{
+					"type": "report",
+					"doctype": "DocShare",
+					"icon": "icon-share",
+					"name": "Document Share Report",
+					"description": _("Report of all document shares")
 				}
 			]
 		},
@@ -53,17 +74,9 @@ def get_data():
 					"hide_count": True
 				},
 				{
-					"type": "page",
-					"name": "modules_setup",
-					"label": _("Show / Hide Modules"),
-					"icon": "icon-upload",
-					"description": _("Show or hide modules globally.")
-				},
-				{
 					"type": "doctype",
-					"name": "Naming Series",
-					"description": _("Set numbering series for transactions."),
-					"hide_count": True
+					"name": "Scheduler Log",
+					"description": _("Log of error on automated events (scheduler).")
 				},
 			]
 		},
@@ -80,15 +93,67 @@ def get_data():
 				},
 				{
 					"type": "doctype",
-					"name": "Rename Tool",
-					"description": _("Rename many items by uploading a .csv file."),
+					"name": "Naming Series",
+					"description": _("Set numbering series for transactions."),
 					"hide_count": True
 				},
 				{
 					"type": "doctype",
-					"name": "File Data",
-					"description": _("Manage uploaded files.")
-				}
+					"name": "Rename Tool",
+					"label": _("Bulk Rename"),
+					"description": _("Rename many items by uploading a .csv file."),
+					"hide_count": True
+				},
+				{
+					"type": "page",
+					"name": "backups",
+					"label": _("Download Backups"),
+					"description": _("List of backups available for download"),
+					"icon": "icon-download"
+				},
+			]
+		},
+		{
+			"label": _("Email"),
+			"icon": "icon-envelope",
+			"items": [
+				{
+					"type": "doctype",
+					"name": "Email Account",
+					"description": _("Add / Manage Email Accounts.")
+				},
+				{
+					"type": "doctype",
+					"name": "Email Alert",
+					"description": _("Setup Email Alert based on various criteria.")
+				},
+				{
+					"type": "doctype",
+					"name": "Standard Reply",
+					"description": _("Standard replies to common queries.")
+				},
+			]
+		},
+		{
+			"label": _("Printing"),
+			"icon": "icon-print",
+			"items": [
+				{
+					"type": "page",
+					"label": "Print Format Builder",
+					"name": "print-format-builder",
+					"description": _("Drag and Drop tool to build and customize Print Formats.")
+				},
+				{
+					"type": "doctype",
+					"name": "Print Settings",
+					"description": _("Set default format, page size, print style etc.")
+				},
+				{
+					"type": "doctype",
+					"name": "Print Format",
+					"description": _("Customized HTML Templates for printing transactions.")
+				},
 			]
 		},
 		{
@@ -113,40 +178,27 @@ def get_data():
 			]
 		},
 		{
-			"label": _("Email"),
-			"icon": "icon-envelope",
+			"label": _("Integrations"),
+			"icon": "icon-star",
 			"items": [
 				{
-					"type": "doctype",
-					"name": "Outgoing Email Settings",
-					"description": _("Set outgoing mail server.")
+					"type": "page",
+					"name": "applications",
+					"label": _("Application Installer"),
+					"description": _("Install Applications."),
+					"icon": "icon-download"
 				},
 				{
 					"type": "doctype",
-					"name": "Email Alert",
-					"description": _("Setup Email Alert based on various criteria.")
+					"name": "Social Login Keys",
+					"description": _("Enter keys to enable login via Facebook, Google, GitHub."),
 				},
 				{
 					"type": "doctype",
-					"name": "Standard Reply",
-					"description": _("Standard replies to common queries.")
-				},
-			]
-		},
-		{
-			"label": _("Printing and Branding"),
-			"icon": "icon-print",
-			"items": [
-				{
-					"type": "doctype",
-					"name": "Print Settings",
-					"description": _("Set default format, page size, print style etc.")
-				},
-				{
-					"type": "doctype",
-					"name": "Print Format",
-					"description": _("Customized HTML Templates for printing transctions.")
-				},
+					"name": "Dropbox Backup",
+					"description": _("Manage cloud backups on Dropbox"),
+					"hide_count": True
+				}
 			]
 		},
 		{
@@ -168,42 +220,15 @@ def get_data():
 					"type": "doctype",
 					"name": "Custom Script",
 					"description": _("Add custom javascript to forms.")
+				},
+				{
+					"type": "doctype",
+					"name": "DocType",
+					"description": _("Add custom forms.")
 				}
+
 			]
 		},
-		{
-			"label": _("System"),
-			"icon": "icon-cog",
-			"items": [
-				{
-					"type": "page",
-					"name": "applications",
-					"label": _("Application Installer"),
-					"description": _("Install Applications."),
-					"icon": "icon-download"
-				},
-				{
-					"type": "doctype",
-					"name": "Backup Manager",
-					"label": _("Download Backup"),
-					"onclick": "frappe.ui.toolbar.download_backup",
-					"icon": "icon-download-alt",
-					"description": _("Send download link of a recent backup to System Managers"),
-					"hide_count": True
-				},
-				{
-					"type": "doctype",
-					"name": "Backup Manager",
-					"description": _("Manage cloud backups on Dropbox"),
-					"hide_count": True
-				},
-				{
-					"type": "doctype",
-					"name": "Scheduler Log",
-					"description": _("Log of error on automated events (scheduler).")
-				},
-			]
-		}
 	]
 	add_setup_section(data, "frappe", "website", _("Website"), "icon-globe")
 	return data

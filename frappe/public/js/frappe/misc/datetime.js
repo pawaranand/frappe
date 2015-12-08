@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 frappe.provide('frappe.datetime');
@@ -8,12 +8,43 @@ moment.defaultDatetimeFormat = "YYYY-MM-DD HH:mm:ss"
 frappe.provide("frappe.datetime");
 
 $.extend(frappe.datetime, {
+	convert_to_user_tz: function(date, format) {
+		// format defaults to true
+		if(sys_defaults.time_zone) {
+			var date_obj = moment.tz(date, sys_defaults.time_zone).local();
+		} else {
+			var date_obj = moment(date);
+		}
+
+		return (format===false) ? date_obj : date_obj.format(moment.defaultDatetimeFormat);
+	},
+
+	convert_to_system_tz: function(date, format) {
+		// format defaults to true
+
+		if(sys_defaults.time_zone) {
+			var date_obj = moment(date).tz(sys_defaults.time_zone);
+		} else {
+			var date_obj = moment(date);
+		}
+
+		return (format===false) ? date_obj : date_obj.format(moment.defaultDatetimeFormat);
+	},
+
+	is_timezone_same: function() {
+		if(sys_defaults.time_zone) {
+			return moment().tz(sys_defaults.time_zone).utcOffset() === moment().utcOffset();
+		} else {
+			return true;
+		}
+	},
+
 	str_to_obj: function(d) {
-		return moment(d, "YYYY-MM-DD HH:mm:ss")._d;
+		return moment(d, moment.defaultDatetimeFormat)._d;
 	},
 
 	obj_to_str: function(d) {
-		return moment(d).format();
+		return moment(d).locale("en").format();
 	},
 
 	obj_to_user: function(d) {
@@ -48,6 +79,14 @@ $.extend(frappe.datetime, {
 		return moment().endOf("month").format();
 	},
 
+	year_start: function(){
+		return moment().startOf("year").format();
+	},
+
+	year_end: function(){
+		return moment().endOf("year").format();
+	},
+
 	get_user_fmt: function() {
 		return sys_defaults.date_format || "yyyy-mm-dd";
 	},
@@ -80,7 +119,8 @@ $.extend(frappe.datetime, {
 		}
 
 		// user_fmt.replace("YYYY", "YY")? user might only input 2 digits of the year, which should also be parsed
-		return moment(val, [user_fmt.replace("YYYY", "YY"), user_fmt]).format(system_fmt);
+		return moment(val, [user_fmt.replace("YYYY", "YY"),
+			user_fmt]).locale("en").format(system_fmt);
 	},
 
 	user_to_obj: function(d) {
@@ -88,15 +128,25 @@ $.extend(frappe.datetime, {
 	},
 
 	global_date_format: function(d) {
-		return moment(d).format('Do MMMM YYYY');
+		var m = moment(d);
+		if(m._f && m._f.indexOf("HH")!== -1) {
+			return m.format("Do MMMM YYYY, h:mma")
+		} else {
+			return m.format('Do MMMM YYYY');
+		}
 	},
 
 	get_today: function() {
-		return moment().format();
+		return moment().locale("en").format();
+	},
+
+	nowdate: function() {
+		return frappe.datetime.get_today();
 	},
 
 	now_time: function() {
-		return moment().format("HH:mm:ss");
+		return frappe.datetime.convert_to_system_tz(moment(), false)
+			.locale("en").format("HH:mm:ss");
 	},
 
 	validate: function(d) {

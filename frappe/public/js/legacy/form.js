@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 /* Form page structure
@@ -37,6 +37,7 @@ _f.Frm = function(doctype, parent, in_form) {
 	this.sections = [];
 	this.grids = [];
 	this.cscript = new frappe.ui.form.Controller({frm:this});
+	this.events = {};
 	this.pformat = {};
 	this.fetch_dict = {};
 	this.parent = parent;
@@ -83,19 +84,15 @@ _f.Frm.prototype.setup = function() {
 	this.wrapper = this.parent;
 	frappe.ui.make_app_page({
 		parent: this.wrapper,
-		single_column: true
+		single_column: this.meta.hide_toolbar
 	});
-	this.appframe = this.wrapper.appframe;
-	this.layout_main = $(this.wrapper)
-		.find(".layout-main")
-		.css({"padding-bottom": "0px"})
-		.get(0);
+	this.page = this.wrapper.page;
+	this.layout_main = this.page.main.get(0);
 
 	this.toolbar = new frappe.ui.form.Toolbar({
 		frm: this,
-		appframe: this.appframe
+		page: this.page
 	});
-	this.frm_head = this.toolbar;
 
 	// print layout
 	this.setup_print_layout();
@@ -110,11 +107,12 @@ _f.Frm.prototype.setup = function() {
 	this.script_manager.setup();
 	this.watch_model_updates();
 
-	this.footer = new frappe.ui.form.Footer({
-		frm: this,
-		parent: $(this.wrapper).find(".appframe-footer")
-	})
-
+	if(!this.meta.hide_toolbar) {
+		this.footer = new frappe.ui.form.Footer({
+			frm: this,
+			parent: $('<div>').appendTo(this.page.main.parent())
+		})
+	}
 	this.setup_drag_drop();
 
 	this.setup_done = true;
@@ -124,26 +122,29 @@ _f.Frm.prototype.setup_drag_drop = function() {
 	var me = this;
 	$(this.wrapper).on('dragenter dragover', false)
 		.on('drop', function (e) {
+			var dataTransfer = e.originalEvent.dataTransfer;
+			if (!(dataTransfer && dataTransfer.files && dataTransfer.files.length > 0)) {
+				return;
+			}
+
 			e.stopPropagation();
 			e.preventDefault();
+
 			if(me.doc.__islocal) {
 				msgprint(__("Please save before attaching."));
-				return false;
 				throw "attach error";
 			}
+
 			if(me.attachments.max_reached()) {
 				msgprint(__("Maximum Attachment Limit for this record reached."));
 				throw "attach error";
 			}
 
-			var dataTransfer = e.originalEvent.dataTransfer;
-			if (dataTransfer && dataTransfer.files && dataTransfer.files.length > 0) {
-				frappe.upload.upload_file(dataTransfer.files[0], me.attachments.get_args(), {
-					callback: function(attachment, r) {
-						me.attachments.attachment_uploaded(attachment, r);
-					}
-				});
-			}
+			frappe.upload.upload_file(dataTransfer.files[0], me.attachments.get_args(), {
+				callback: function(attachment, r) {
+					me.attachments.attachment_uploaded(attachment, r);
+				}
+			});
 		});
 }
 
@@ -167,18 +168,14 @@ _f.Frm.prototype.print_doc = function() {
 		msgprint(__("Cannot print cancelled documents"));
 		return;
 	}
-	this.print_preview.print_sel
-		.empty().add_options(this.print_preview.print_formats)
-		.trigger("change");
-
-	this.print_preview.wrapper.toggle(true);
-	this.form_wrapper.toggle(false);
+	this.print_preview.refresh_print_options().trigger("change");
+	this.page.set_view("print");
 }
 
 _f.Frm.prototype.hide_print = function() {
-	if(this.setup_done) {
-		this.print_preview.wrapper.toggle(false);
-		this.form_wrapper.toggle(true);
+	if(this.setup_done && this.page.current_view_name==="print") {
+		this.page.set_view(this.page.previous_view_name==="print" ?
+			"main" : (this.page.previous_view_name || "main"));
 	}
 }
 
@@ -200,26 +197,23 @@ _f.Frm.prototype.watch_model_updates = function() {
 	})
 
 	// on table fields
-	$.each(frappe.get_children("DocType", me.doctype, "fields", {fieldtype:"Table"}), function(i, df) {
+	var table_fields = frappe.get_children("DocType", me.doctype, "fields", {fieldtype:"Table"});
+
+	// using $.each to preserve df via closure
+	$.each(table_fields, function(i, df) {
 		frappe.model.on(df.options, "*", function(fieldname, value, doc) {
 			if(doc.parent===me.docname && doc.parentfield===df.fieldname) {
 				me.dirty();
 				me.fields_dict[df.fieldname].grid.set_value(fieldname, value, doc);
 				me.script_manager.trigger(fieldname, doc.doctype, doc.name);
 			}
-		})
-	})
-
-}
-
-_f.Frm.prototype.onhide = function() {
-	if(_f.cur_grid_cell) _f.cur_grid_cell.grid.cell_deselect();
+		});
+	});
 }
 
 _f.Frm.prototype.setup_std_layout = function() {
 	this.form_wrapper = $('<div></div>').appendTo(this.layout_main);
-	this.body_header	= $("<div>").appendTo(this.form_wrapper);
-	this.body 			= $("<div>").appendTo(this.form_wrapper);
+	this.body 			= $('<div></div>').appendTo(this.form_wrapper);
 
 	// only tray
 	this.meta.section_style='Simple'; // always simple!
@@ -249,6 +243,7 @@ _f.Frm.prototype.setup_std_layout = function() {
 _f.Frm.prototype.email_doc = function(message) {
 	new frappe.views.CommunicationComposer({
 		doc: this.doc,
+		frm: this,
 		subject: __(this.meta.name) + ': ' + this.docname,
 		recipients: this.doc.email || this.doc.email_id || this.doc.contact_email,
 		attach_document_print: true,
@@ -260,6 +255,10 @@ _f.Frm.prototype.email_doc = function(message) {
 // rename the form
 _f.Frm.prototype.rename_doc = function() {
 	frappe.model.rename_doc(this.doctype, this.docname);
+}
+
+_f.Frm.prototype.share_doc = function() {
+	this.shared.show();
 }
 
 // notify this form of renamed records
@@ -274,7 +273,7 @@ _f.Frm.prototype.rename_notify = function(dt, old, name) {
 		return;
 
 	// cleanup
-	if(this && this.opendocs[old]) {
+	if(this && this.opendocs[old] && frappe.meta.docfield_copy[dt]) {
 		// delete docfield copy
 		frappe.meta.docfield_copy[dt][name] = frappe.meta.docfield_copy[dt][old];
 		delete frappe.meta.docfield_copy[dt][old];
@@ -299,24 +298,40 @@ _f.Frm.prototype.setup_meta = function(doctype) {
 	if(this.meta.istable) { this.meta.in_dialog = 1 }
 }
 
-_f.Frm.prototype.defocus_rest = function() {
-	// deselect others
-	if(_f.cur_grid_cell) _f.cur_grid_cell.grid.cell_deselect();
-}
-
-_f.Frm.prototype.refresh_header = function() {
+_f.Frm.prototype.refresh_header = function(is_a_different_doc) {
 	// set title
 	// main title
 	if(!this.meta.in_dialog || this.in_form) {
-		set_title(this.meta.issingle ? this.doctype : this.docname);
+		frappe.utils.set_title(this.meta.issingle ? this.doctype : this.docname);
 	}
 
 	if(frappe.ui.toolbar.recent)
 		frappe.ui.toolbar.recent.add(this.doctype, this.docname, 1);
 
 	// show / hide buttons
-	if(this.frm_head) {
-		this.frm_head.refresh();
+	if(this.toolbar) {
+		if (is_a_different_doc) {
+			this.toolbar.current_status = undefined;
+		}
+
+		this.toolbar.refresh();
+	}
+
+	this.dashboard.reset();
+
+	this.clear_custom_buttons();
+
+	this.show_web_link();
+}
+
+_f.Frm.prototype.show_web_link = function() {
+	var doc = this.doc, me = this;
+	if(!doc.__islocal && doc.__onload && doc.__onload.is_website_generator) {
+		me.web_link && me.web_link.remove();
+		if(doc.__onload.published) {
+			me.web_link = me.sidebar.add_user_action("See on Website",
+				function() {}).attr("href", "/" + doc.__onload.website_route).attr("target", "_blank");
+		}
 	}
 }
 
@@ -332,13 +347,16 @@ _f.Frm.prototype.check_doc_perm = function() {
 }
 
 _f.Frm.prototype.refresh = function(docname) {
-	// record switch
+	var is_a_different_doc = docname ? true : false;
+
 	if(docname) {
+		// record switch
 		if(this.docname != docname && (!this.meta.in_dialog || this.in_form) &&
 			!this.meta.istable) {
 				scroll(0, 0);
 				this.hide_print();
 			}
+			frappe.ui.form.close_grid_form();
 		this.docname = docname;
 	}
 
@@ -375,29 +393,63 @@ _f.Frm.prototype.refresh = function(docname) {
 		// load the record for the first time, if not loaded (call 'onload')
 		cur_frm.cscript.is_onload = false;
 		if(!this.opendocs[this.docname]) {
+			var me = this;
 			cur_frm.cscript.is_onload = true;
 			this.setnewdoc();
+			$(document).trigger("form-load", [this]);
+			$(this.page.wrapper).on('hide',  function(e) {
+				$(document).trigger("form-unload", [me]);
+			});
 		} else {
-			this.render_form();
+			this.render_form(is_a_different_doc);
+			if (this.doc.localname) {
+				// trigger form-rename and remove .localname
+				delete this.doc.localname;
+				$(document).trigger("form-rename", [this]);
+			}
 		}
 
+		// if print format is shown, refresh the format
+		if(this.print_preview.wrapper.is(":visible")) {
+			this.print_preview.preview();
+		}
+
+		this.show_if_needs_refresh();
 	}
 }
 
-_f.Frm.prototype.render_form = function() {
+_f.Frm.prototype.show_if_needs_refresh = function() {
+	if(this.doc.__needs_refresh) {
+		this.dashboard.set_headline_alert(__("This form has been modified after you have loaded it")
+			+ '<a class="btn btn-xs btn-primary pull-right" onclick="cur_frm.reload_doc()">'
+			+ __("Refresh") + '</a>', "alert-warning");
+	}
+}
+
+_f.Frm.prototype.render_form = function(is_a_different_doc) {
 	if(!this.meta.istable) {
-		// header
-		this.refresh_header();
+		this.layout.doc = this.doc;
+		this.layout.attach_doc_and_docfields()
+
+		this.sidebar = new frappe.ui.form.Sidebar({
+			frm: this,
+			page: this.page
+		});
+
+		// header must be refreshed before client methods
+		// because add_custom_button
+		this.refresh_header(is_a_different_doc);
 
 		// call trigger
 		this.script_manager.trigger("refresh");
 
 		// trigger global trigger
 		// to use this
-		$(document).trigger('form_refresh');
+		$(document).trigger('form_refresh', [this]);
 
 		// fields
 		this.refresh_fields();
+
 
 		// call onload post render for callbacks to be fired
 		if(this.cscript.is_onload) {
@@ -407,23 +459,25 @@ _f.Frm.prototype.render_form = function() {
 		// focus on first input
 
 		if(this.doc.docstatus==0) {
-			var first = this.form_wrapper.find('.form-layout-row :input:first');
+			var first = this.form_wrapper.find('.form-layout :input:first');
 			if(!in_list(["Date", "Datetime"], first.attr("data-fieldtype"))) {
 				first.focus();
 			}
 		}
-
 	} else {
-		this.refresh_header();
+		this.refresh_header(is_a_different_doc);
 	}
 
 	$(cur_frm.wrapper).trigger('render_complete');
 
+	this.layout.show_empty_form_message();
 }
 
 _f.Frm.prototype.refresh_field = function(fname) {
-	cur_frm.fields_dict[fname] && cur_frm.fields_dict[fname].refresh
-		&& cur_frm.fields_dict[fname].refresh();
+	if(cur_frm.fields_dict[fname] && cur_frm.fields_dict[fname].refresh) {
+		cur_frm.fields_dict[fname].refresh();
+		this.layout.refresh_dependency();
+	}
 }
 
 _f.Frm.prototype.refresh_fields = function() {
@@ -470,12 +524,44 @@ _f.Frm.prototype.setnewdoc = function() {
 	// this.check_doctype_conflict(docname);
 	var me = this;
 
+	// hide any open grid
 	this.script_manager.trigger("before_load", this.doctype, this.docname, function() {
 		me.script_manager.trigger("onload");
 		me.opendocs[me.docname] = true;
 		me.render_form();
+		if(frappe.route_options) {
+				$.each(frappe.route_options, function(fieldname, value) {
+					try {
+						me.set_value(fieldname, value);
+					} catch (e) {
+						// pass - see error log
+					}
+				});
+
+			frappe.route_options = null;
+		}
+
+		frappe.after_ajax(function() {
+			me.trigger_link_fields();
+		});
+
+		frappe.breadcrumbs.add(me.meta.module, me.doctype)
 	})
 
+}
+
+_f.Frm.prototype.trigger_link_fields = function() {
+	// trigger link fields which have default values set
+	if (this.is_new() && this.doc.__run_link_triggers) {
+		$.each(this.fields_dict, function(fieldname, field) {
+			if (field.df.fieldtype=="Link" && this.doc[fieldname]) {
+				// triggers add fetch, sets value in model and runs triggers
+				field.set_value(this.doc[fieldname]);
+			}
+		});
+
+		delete this.doc.__run_link_triggers;
+	}
 }
 
 _f.Frm.prototype.runscript = function(scriptname, callingfield, onrefresh) {
@@ -485,26 +571,20 @@ _f.Frm.prototype.runscript = function(scriptname, callingfield, onrefresh) {
 		if(callingfield)
 			$(callingfield.input).set_working();
 
-		return $c('runserverobj', {'docs':this.doc, 'method':scriptname },
-			function(r, rtxt) {
-				// run refresh
-				if(onrefresh)
-					onrefresh(r,rtxt);
+		frappe.call({
+			method: "runserverobj",
+			args: {'docs':this.doc, 'method':scriptname },
+			btn: callingfield.$input,
+			callback: function(r) {
+				if(!r.exc) {
+					if(onrefresh) {
+						onrefresh(r);
+					}
 
-				// fields
-				me.refresh_fields();
-
-				// enable button
-				if(callingfield)
-					$(callingfield.input).done_working();
-			},
-			// error
-			function() {
-				// enable button
-				if(callingfield)
-					$(callingfield.input).done_working();
+					me.refresh_fields();
+				}
 			}
-		);
+		});
 	}
 }
 
@@ -513,7 +593,10 @@ _f.Frm.prototype.copy_doc = function(onload, from_amend) {
 	var newdoc = frappe.model.copy_doc(this.doc, from_amend);
 
 	newdoc.idx = null;
-	if(onload)onload(newdoc);
+	newdoc.__run_link_triggers = false;
+	if(onload) {
+		onload(newdoc);
+	}
 	loaddoc(newdoc.doctype, newdoc.name);
 }
 
@@ -538,6 +621,8 @@ _f.Frm.prototype.save = function(save_action, callback, btn, on_error) {
 	btn && $(btn).prop("disabled", true);
 	$(document.activeElement).blur();
 
+	frappe.ui.form.close_grid_form();
+
 	// let any pending js process finish
 	var me = this;
 	setTimeout(function() { me._save(save_action, callback, btn, on_error) }, 100);
@@ -551,20 +636,13 @@ _f.Frm.prototype._save = function(save_action, callback, btn, on_error) {
 	if((!this.meta.in_dialog || this.in_form) && !this.meta.istable)
 		scroll(0, 0);
 
-	if(save_action != "Update") {
-		// validate
-		validated = true;
-		this.script_manager.trigger("validate");
-
-		if(!validated) {
-			if(on_error)
-				on_error();
-			return;
-		}
-	}
-
 	var after_save = function(r) {
 		if(!r.exc) {
+			if (["Save", "Update", "Amend"].indexOf(save_action)!==-1) {
+				frappe.utils.play_sound("click");
+			}
+
+			me.script_manager.trigger("after_save");
 			me.refresh();
 		} else {
 			if(on_error)
@@ -582,7 +660,27 @@ _f.Frm.prototype._save = function(save_action, callback, btn, on_error) {
 		}
 	}
 
-	frappe.ui.form.save(me, save_action, after_save, btn);
+	if(save_action != "Update") {
+		// validate
+		validated = true;
+		$.when(this.script_manager.trigger("validate"), this.script_manager.trigger("before_save"))
+			.done(function() {
+				// done is called after all ajaxes in validate & before_save are completed :)
+
+				if(!validated) {
+					btn && $(btn).prop("disabled", false);
+					if(on_error) {
+						on_error();
+					}
+					return;
+				}
+
+				frappe.ui.form.save(me, save_action, after_save, btn);
+			});
+
+	} else {
+		frappe.ui.form.save(me, save_action, after_save, btn);
+	}
 }
 
 
@@ -591,20 +689,22 @@ _f.Frm.prototype.savesubmit = function(btn, callback, on_error) {
 	this.validate_form_action("Submit");
 	frappe.confirm(__("Permanently Submit {0}?", [this.docname]), function() {
 		validated = true;
-		me.script_manager.trigger("before_submit");
-		if(!validated) {
-			if(on_error)
-				on_error();
-			return;
-		}
-
-		me.save('Submit', function(r) {
-			if(!r.exc) {
-				callback && callback();
-				me.script_manager.trigger("on_submit");
+		me.script_manager.trigger("before_submit").done(function() {
+			if(!validated) {
+				if(on_error)
+					on_error();
+				return;
 			}
-		}, btn, on_error);
-	});
+
+			me.save('Submit', function(r) {
+				if(!r.exc) {
+					frappe.utils.play_sound("submit");
+					callback && callback();
+					me.script_manager.trigger("on_submit");
+				}
+			}, btn, on_error);
+		});
+	}, on_error);
 };
 
 _f.Frm.prototype.savecancel = function(btn, callback, on_error) {
@@ -612,24 +712,26 @@ _f.Frm.prototype.savecancel = function(btn, callback, on_error) {
 	this.validate_form_action('Cancel');
 	frappe.confirm(__("Permanently Cancel {0}?", [this.docname]), function() {
 		validated = true;
-		me.script_manager.trigger("before_cancel");
-		if(!validated) {
-			if(on_error)
-				on_error();
-			return;
-		}
-
-		var after_cancel = function(r) {
-			if(!r.exc) {
-				me.refresh();
-				callback && callback();
-				me.script_manager.trigger("after_cancel");
-			} else {
-				on_error();
+		me.script_manager.trigger("before_cancel").done(function() {
+			if(!validated) {
+				if(on_error)
+					on_error();
+				return;
 			}
-		}
-		frappe.ui.form.save(me, "cancel", after_cancel, btn);
-	});
+
+			var after_cancel = function(r) {
+				if(!r.exc) {
+					frappe.utils.play_sound("cancel");
+					me.refresh();
+					callback && callback();
+					me.script_manager.trigger("after_cancel");
+				} else {
+					on_error();
+				}
+			}
+			frappe.ui.form.save(me, "cancel", after_cancel, btn);
+		});
+	}, on_error);
 }
 
 // delete the record
@@ -653,17 +755,18 @@ _f.Frm.prototype.amend_doc = function() {
 	      newdoc.amendment_date = dateutil.obj_to_str(new Date());
     }
     this.copy_doc(fn, 1);
+	frappe.utils.play_sound("click");
 }
 
 _f.Frm.prototype.disable_save = function() {
 	// IMPORTANT: this function should be called in refresh event
 	this.save_disabled = true;
-	this.appframe.set_title_right("", null);
+	this.page.clear_primary_action();
 }
 
 _f.Frm.prototype.enable_save = function() {
 	this.save_disabled = false;
-	this.toolbar.set_title_right();
+	this.toolbar.set_primary_action();
 }
 
 _f.Frm.prototype.save_or_update = function() {
@@ -683,20 +786,39 @@ _f.get_value = function(dt, dn, fn) {
 
 _f.Frm.prototype.dirty = function() {
 	this.doc.__unsaved = 1;
-	$(this.wrapper).trigger('dirty')
+	$(this.wrapper).trigger('dirty');
 }
 
 _f.Frm.prototype.get_docinfo = function() {
 	return frappe.model.docinfo[this.doctype][this.docname];
 }
 
+_f.Frm.prototype.reload_docinfo = function(callback) {
+	var me = this;
+	frappe.call({
+		method: "frappe.desk.form.load.get_docinfo",
+		args: {
+			doctype: me.doctype,
+			name: me.doc.name
+		},
+		callback: function(r) {
+			// docinfo will be synced
+			if(callback) callback(r.docinfo);
+			me.comments.refresh();
+			me.assign_to.refresh();
+			me.attachments.refresh();
+		}
+	})
+}
+
+
 _f.Frm.prototype.get_perm = function(permlevel, access_type) {
 	return this.perm[permlevel] ? this.perm[permlevel][access_type] : null;
 }
 
 
-_f.Frm.prototype.set_intro = function(txt) {
-	frappe.utils.set_intro(this, this.body, txt);
+_f.Frm.prototype.set_intro = function(txt, append) {
+	frappe.utils.set_intro(this, this.body, txt, append);
 }
 
 _f.Frm.prototype.set_footnote = function(txt) {
@@ -705,11 +827,12 @@ _f.Frm.prototype.set_footnote = function(txt) {
 
 
 _f.Frm.prototype.add_custom_button = function(label, fn, icon, toolbar_or_class) {
-	return this.appframe.add_primary_action(label, fn, icon || "icon-arrow-play", toolbar_or_class);
+	return this.page.add_inner_button(label, fn);
 }
 
 _f.Frm.prototype.clear_custom_buttons = function() {
-	this.appframe.clear_primary_action()
+	this.page.inner_toolbar.empty().addClass("hide");
+	this.page.clear_user_actions();
 }
 
 _f.Frm.prototype.add_fetch = function(link_field, src_field, tar_field) {
@@ -741,3 +864,11 @@ _f.Frm.prototype.validate_form_action = function(action) {
 		frappe.throw (__("No permission to '{0}' {1}", [__(action), __(this.doc.doctype)]));
 	}
 };
+
+_f.Frm.prototype.get_handlers = function(fieldname, doctype, docname) {
+	return this.script_manager.get_handlers(fieldname, doctype || this.doctype, docname || this.docname)
+}
+
+_f.Frm.prototype.has_perm = function(ptype) {
+	return frappe.perm.has_perm(this.doctype, 0, ptype, this.doc);
+}

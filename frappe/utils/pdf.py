@@ -1,8 +1,10 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
+from __future__ import unicode_literals
 
 import pdfkit, os, frappe
 from frappe.utils import scrub_urls
+from frappe import _
 
 def get_pdf(html, options=None):
 	if not options:
@@ -17,6 +19,7 @@ def get_pdf(html, options=None):
 		'margin-bottom': '15mm',
 		'margin-left': '15mm',
 		'encoding': "UTF-8",
+		'quiet': None,
 		'no-outline': None
 	})
 
@@ -25,11 +28,28 @@ def get_pdf(html, options=None):
 
 	html = scrub_urls(html)
 	fname = os.path.join("/tmp", frappe.generate_hash() + ".pdf")
-	pdfkit.from_string(html, fname, options=options or {})
 
-	with open(fname, "rb") as fileobj:
-		filedata = fileobj.read()
+	try:
+		pdfkit.from_string(html, fname, options=options or {})
 
-	os.remove(fname)
+		with open(fname, "rb") as fileobj:
+			filedata = fileobj.read()
+
+	except IOError, e:
+		if "ContentNotFoundError" in e.message:
+			# allow pdfs with missing images if file got created
+			if os.path.exists(fname):
+				with open(fname, "rb") as fileobj:
+					filedata = fileobj.read()
+
+			else:
+				frappe.throw(_("PDF generation failed because of broken image links"))
+		else:
+			raise
+
+	finally:
+		# always cleanup
+		if os.path.exists(fname):
+			os.remove(fname)
 
 	return filedata
